@@ -141,7 +141,7 @@ const NAV_ITEMS: { key: NavKey; icon: typeof Activity }[] = [
 
 const DEMO_VEHICLES = ['VEH-001', 'VEH-002', 'VEH-003'];
 const DEFAULT_CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID ?? '11155111');
-const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000';
+const API_BASE_URL = import.meta.env.VITE_API_URL ?? '';
 const DEMO_ONLY_MODE = import.meta.env.VITE_DEMO_ONLY !== 'false';
 const START_IN_DEMO_MODE = DEMO_ONLY_MODE || import.meta.env.VITE_DEMO_MODE !== 'false';
 

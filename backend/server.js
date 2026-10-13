@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import { Pool } from '@neondatabase/serverless';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,6 +12,8 @@ const DIST_PATH = path.resolve(__dirname, '..', 'dist');
 const PORT = Number(process.env.PORT || 4000);
 const PUBLIC_API_CACHE_MS = 5 * 60 * 1000;
 const publicApiCache = new Map();
+let databasePool;
+let databaseInitialization;
 
 const defaultState = {
   vehicles: [
@@ -36,7 +39,48 @@ const defaultState = {
   ],
 };
 
+function getDatabasePool() {
+  if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL is required for the Vercel persistent database.');
+  }
+  databasePool ??= new Pool({ connectionString: process.env.DATABASE_URL, max: 1 });
+  return databasePool;
+}
+
+async function ensureDatabase(pool) {
+  databaseInitialization ??= (async () => {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ev_demo_store (
+        id integer PRIMARY KEY CHECK (id = 1),
+        state jsonb NOT NULL,
+        updated_at timestamptz NOT NULL DEFAULT now()
+      )
+    `);
+    await pool.query(
+      'INSERT INTO ev_demo_store (id, state) VALUES (1, $1::jsonb) ON CONFLICT (id) DO NOTHING',
+      [JSON.stringify(defaultState)],
+    );
+  })();
+
+  try {
+    await databaseInitialization;
+  } catch (error) {
+    databaseInitialization = undefined;
+    throw error;
+  }
+}
+
 async function ensureStore() {
+  if (process.env.DATABASE_URL) {
+    const pool = getDatabasePool();
+    await ensureDatabase(pool);
+    const { rows } = await pool.query('SELECT state FROM ev_demo_store WHERE id = 1');
+    return rows[0].state;
+  }
+  if (process.env.VERCEL) {
+    throw new Error('Set DATABASE_URL to a persistent Neon Postgres database before deploying the API.');
+  }
+
   try {
     await fs.access(STORE_PATH);
     const raw = await fs.readFile(STORE_PATH, 'utf8');
@@ -55,8 +99,45 @@ async function ensureStore() {
 }
 
 async function writeStore(state) {
+  if (process.env.DATABASE_URL || process.env.VERCEL) {
+    throw new Error('Persistent production writes must use updateStore().');
+  }
   await fs.mkdir(path.dirname(STORE_PATH), { recursive: true });
   await fs.writeFile(STORE_PATH, JSON.stringify(state, null, 2));
+}
+
+async function updateStore(update) {
+  if (!process.env.DATABASE_URL) {
+    if (process.env.VERCEL) {
+      throw new Error('Set DATABASE_URL to a persistent Neon Postgres database before deploying the API.');
+    }
+    const state = await ensureStore();
+    const result = await update(state);
+    await writeStore(state);
+    return result;
+  }
+
+  const pool = getDatabasePool();
+  await ensureDatabase(pool);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock($1)', [73918421]);
+    const { rows } = await client.query('SELECT state FROM ev_demo_store WHERE id = 1 FOR UPDATE');
+    const state = rows[0].state;
+    const result = await update(state);
+    await client.query(
+      'UPDATE ev_demo_store SET state = $1::jsonb, updated_at = now() WHERE id = 1',
+      [JSON.stringify(state)],
+    );
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 function normalizeStatus(soH, temperature, errorCode) {
@@ -133,8 +214,15 @@ async function cachedPublicFetch(cacheKey, url, options = {}) {
   return value;
 }
 
-app.get('/api/health', (req, res) => {
-  res.json({ ok: true, service: 'ev-battery-health-monitor-api', timestamp: Date.now() });
+app.get('/api/health', async (req, res) => {
+  try {
+    if (process.env.VERCEL || process.env.DATABASE_URL) {
+      await ensureStore();
+    }
+    res.json({ ok: true, service: 'ev-battery-health-monitor-api', timestamp: Date.now() });
+  } catch (error) {
+    res.status(503).json({ ok: false, service: 'ev-battery-health-monitor-api', message: error.message });
+  }
 });
 
 app.get('/api/public/weather', async (req, res) => {
@@ -332,33 +420,34 @@ app.post('/api/vehicles', async (req, res) => {
       return res.status(400).json({ message: 'Vehicle ID must contain 1-31 letters, numbers, or hyphens.' });
     }
 
-    const state = await ensureStore();
-    if (state.vehicles.some((vehicle) => vehicle.vehicleId === normalizedVehicleId)) {
-      return res.status(409).json({ message: 'Vehicle already exists.' });
-    }
+    const result = await updateStore((state) => {
+      if (state.vehicles.some((vehicle) => vehicle.vehicleId === normalizedVehicleId)) {
+        return { status: 409, body: { message: 'Vehicle already exists.' } };
+      }
 
-    const vehicle = {
-      vehicleId: normalizedVehicleId,
-      registered: true,
-      status: 'Monitoring',
-      latestSoH: 88,
-      latestTemp: 30,
-      latestVoltage: 390,
-      timestamp: Date.now(),
-    };
+      const vehicle = {
+        vehicleId: normalizedVehicleId,
+        registered: true,
+        status: 'Monitoring',
+        latestSoH: 88,
+        latestTemp: 30,
+        latestVoltage: 390,
+        timestamp: Date.now(),
+      };
 
-    state.vehicles.push(vehicle);
-    state.telemetry.push({
-      vehicleId: normalizedVehicleId,
-      timestamp: vehicle.timestamp,
-      soH: vehicle.latestSoH,
-      temperature: vehicle.latestTemp,
-      voltage: vehicle.latestVoltage,
-      errorCode: 0,
-      status: 'Normal',
+      state.vehicles.push(vehicle);
+      state.telemetry.push({
+        vehicleId: normalizedVehicleId,
+        timestamp: vehicle.timestamp,
+        soH: vehicle.latestSoH,
+        temperature: vehicle.latestTemp,
+        voltage: vehicle.latestVoltage,
+        errorCode: 0,
+        status: 'Normal',
+      });
+      return { status: 201, body: vehicle };
     });
-    await writeStore(state);
-    res.status(201).json(vehicle);
+    res.status(result.status).json(result.body);
   } catch (error) {
     res.status(500).json({ message: 'Failed to register vehicle', error: error.message });
   }
@@ -387,48 +476,48 @@ app.post('/api/telemetry', async (req, res) => {
       return res.status(400).json({ message: 'Telemetry values are outside supported ranges.' });
     }
 
-    const state = await ensureStore();
-    const nextRecord = {
-      vehicleId: normalizedVehicleId,
-      timestamp: Date.now(),
-      soH: numericSoH,
-      temperature: numericTemperature,
-      voltage: numericVoltage,
-      errorCode: numericErrorCode,
-      status: normalizeStatus(numericSoH, numericTemperature, numericErrorCode),
-    };
-
-    state.telemetry.push(nextRecord);
-
-    if (!state.vehicles.some((vehicle) => vehicle.vehicleId === normalizedVehicleId)) {
-      state.vehicles.push({
+    const nextRecord = await updateStore((state) => {
+      const record = {
         vehicleId: normalizedVehicleId,
-        registered: true,
-        status: nextRecord.status,
-        latestSoH: numericSoH,
-        latestTemp: numericTemperature,
-        latestVoltage: numericVoltage,
-        timestamp: nextRecord.timestamp,
-      });
-    }
-
-    state.vehicles = updateVehicleSummary(state.vehicles, state.telemetry);
-
-    if (numericErrorCode !== 0 || numericSoH < 75 || numericTemperature > 45) {
-      const severity = numericErrorCode !== 0 ? 'Critical' : numericTemperature > 45 ? 'Warning' : 'Degraded';
-      const alert = {
-        id: `alert-${nextRecord.timestamp}-${state.alerts.length}`,
-        severity,
-        vehicleId: normalizedVehicleId,
-        message: numericErrorCode !== 0 ? 'Critical battery fault triggered.' : numericTemperature > 45 ? 'Battery temperature above operating threshold.' : 'State of health below degradation threshold.',
-        triggerValue: String(numericErrorCode !== 0 ? `Error ${numericErrorCode}` : numericTemperature > 45 ? `${numericTemperature.toFixed(1)}°C` : `${numericSoH.toFixed(1)}%`),
-        timestamp: nextRecord.timestamp,
+        timestamp: Date.now(),
+        soH: numericSoH,
+        temperature: numericTemperature,
+        voltage: numericVoltage,
+        errorCode: numericErrorCode,
+        status: normalizeStatus(numericSoH, numericTemperature, numericErrorCode),
       };
 
-      state.alerts.unshift(alert);
-    }
+      state.telemetry.push(record);
 
-    await writeStore(state);
+      if (!state.vehicles.some((vehicle) => vehicle.vehicleId === normalizedVehicleId)) {
+        state.vehicles.push({
+          vehicleId: normalizedVehicleId,
+          registered: true,
+          status: record.status,
+          latestSoH: numericSoH,
+          latestTemp: numericTemperature,
+          latestVoltage: numericVoltage,
+          timestamp: record.timestamp,
+        });
+      }
+
+      state.vehicles = updateVehicleSummary(state.vehicles, state.telemetry);
+
+      if (numericErrorCode !== 0 || numericSoH < 75 || numericTemperature > 45) {
+        const severity = numericErrorCode !== 0 ? 'Critical' : numericTemperature > 45 ? 'Warning' : 'Degraded';
+        const alert = {
+          id: `alert-${record.timestamp}-${state.alerts.length}`,
+          severity,
+          vehicleId: normalizedVehicleId,
+          message: numericErrorCode !== 0 ? 'Critical battery fault triggered.' : numericTemperature > 45 ? 'Battery temperature above operating threshold.' : 'State of health below degradation threshold.',
+          triggerValue: String(numericErrorCode !== 0 ? `Error ${numericErrorCode}` : numericTemperature > 45 ? `${numericTemperature.toFixed(1)}°C` : `${numericSoH.toFixed(1)}%`),
+          timestamp: record.timestamp,
+        };
+
+        state.alerts.unshift(alert);
+      }
+      return record;
+    });
     res.status(201).json(nextRecord);
   } catch (error) {
     res.status(500).json({ message: 'Failed to save telemetry', error: error.message });
@@ -439,15 +528,21 @@ app.use('/api', (req, res) => {
   res.status(404).json({ message: 'API route not found.' });
 });
 
-app.use(express.static(DIST_PATH));
-app.get('*', (req, res, next) => {
-  res.sendFile(path.join(DIST_PATH, 'index.html'), (error) => {
-    if (error) {
-      next(error);
-    }
+if (!process.env.VERCEL) {
+  app.use(express.static(DIST_PATH));
+  app.get('*', (req, res, next) => {
+    res.sendFile(path.join(DIST_PATH, 'index.html'), (error) => {
+      if (error) {
+        next(error);
+      }
+    });
   });
-});
+}
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`EV Battery Health Monitor backend running on http://localhost:${PORT}`);
-});
+if (!process.env.VERCEL) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`EV Battery Health Monitor backend running on http://localhost:${PORT}`);
+  });
+}
+
+export default app;

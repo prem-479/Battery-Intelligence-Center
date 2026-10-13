@@ -137,6 +137,17 @@ docker compose up --build
 
 Open `http://localhost:4000`. To deploy, configure a container host to build this repository's `Dockerfile` and expose its host-provided `PORT`. Mount persistent storage at `/app/backend/data` if demo records should survive container replacement. The backend is intentionally unauthenticated and uses a JSON file store: keep it for public sample data only, not real vehicle or customer information. `docker compose config` validates the local Compose configuration; running the container requires an available Docker daemon.
 
+## Free-tier Vercel deployment
+
+Vercel serves the Vite frontend and runs the Express API as a serverless function. Neon Postgres provides durable demo storage; Vercel function filesystems are temporary and must not be used for persistent records.
+
+1. Import this GitHub repository into a Vercel Hobby project, using the repository root as the project root. The included `vercel.json` configures the Vite build and API function.
+2. Create a Neon project on its free plan and connect it to the Vercel project, or add its pooled connection string as the Vercel environment variable `DATABASE_URL` for Production and Preview. Do not commit or paste the connection string into source files.
+3. Keep `VITE_DEMO_MODE=true` and `VITE_DEMO_ONLY=true`; leave `VITE_API_URL` unset in Vercel so the browser calls the same-origin `/api` routes.
+4. Redeploy after setting environment variables. Confirm `/api/health` reports `ok: true`, then test vehicle registration and telemetry submission.
+
+The API creates and seeds its Postgres state table on first use and serializes demo writes in a database transaction. Locally, it continues using `backend/data/store.json`; in Vercel, it requires `DATABASE_URL` and will not silently fall back to ephemeral disk. Vercel Hobby and Neon Free have usage quotas and service limits that may change. This unauthenticated demo is for public sample data only, not private or production vehicle data.
+
 ## Notes
 
 - This frontend is designed for a real on-chain deployment, but demo mode is enabled by default so the UI is useful without a contract.
