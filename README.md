@@ -68,7 +68,7 @@ React · TypeScript · Express · PostgreSQL · Vercel · Neon · Solidity · Et
 
 ## Architecture and reliability
 
-- Vercel serves the Vite-built frontend and routes `/api/*` requests to an Express serverless function on the same origin.
+- Vercel serves the Vite-built frontend and routes API requests to Express serverless functions on the same origin; a nested dynamic route handles vehicle telemetry and thermal-assessment paths.
 - Neon Postgres stores the demo fleet state in a JSONB-backed row. Schema creation is initialized under a PostgreSQL advisory lock to prevent concurrent first-request creation races.
 - `GET /api/vehicles/:vehicleId/thermal-assessment` applies the shared deterministic thresholds to the stored latest reading and returns a history summary, the thresholds, and a data-provenance notice. It does not persist a separate thermal model result.
 - Demo writes run transactionally and use an advisory lock to avoid overlapping updates to the shared sample state.
