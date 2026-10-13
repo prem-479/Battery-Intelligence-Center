@@ -40,7 +40,7 @@ React · TypeScript · Express · PostgreSQL · Vercel · Neon · Solidity · Et
 
 - Designed and deployed a full-stack EV fleet dashboard with **10 REST API routes**, covering fleet summaries, vehicles, telemetry, alerts, health checks, and public-data lookups.
 - Integrated **3 public data providers** and built a persistent serverless backend with transaction-safe PostgreSQL writes.
-- Verified the production homepage, API health check, and fleet overview endpoint with successful HTTP responses.
+- Verified the production homepage, health and overview APIs, nested telemetry and thermal-assessment APIs, and both documented screenshot assets with successful HTTP responses.
 - Implemented demo-mode safeguards that distinguish sample battery telemetry from live external data and on-chain contract data.
 - Added a thermal risk baseline with documented temperature/freshness thresholds and automated unit tests; the interface explicitly distinguishes pack history from unavailable cell-level data.
 
@@ -52,7 +52,7 @@ React · TypeScript · Express · PostgreSQL · Vercel · Neon · Solidity · Et
 | Public data integrations | 3 |
 | Persistence modes | 2 — local JSON and Neon Postgres |
 | Wallet or sign-in required for the demo | 0 |
-| Production smoke checks verified | 3 — homepage, API health, fleet overview |
+| Production smoke checks verified | 7 — homepage, 4 API routes, 2 screenshots |
 | Thermal rule-baseline tests | 5 |
 
 ## Technology
