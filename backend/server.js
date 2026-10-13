@@ -49,17 +49,28 @@ function getDatabasePool() {
 
 async function ensureDatabase(pool) {
   databaseInitialization ??= (async () => {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS ev_demo_store (
-        id integer PRIMARY KEY CHECK (id = 1),
-        state jsonb NOT NULL,
-        updated_at timestamptz NOT NULL DEFAULT now()
-      )
-    `);
-    await pool.query(
-      'INSERT INTO ev_demo_store (id, state) VALUES (1, $1::jsonb) ON CONFLICT (id) DO NOTHING',
-      [JSON.stringify(defaultState)],
-    );
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock($1)', [73918422]);
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS ev_demo_store (
+          id integer PRIMARY KEY CHECK (id = 1),
+          state jsonb NOT NULL,
+          updated_at timestamptz NOT NULL DEFAULT now()
+        )
+      `);
+      await client.query(
+        'INSERT INTO ev_demo_store (id, state) VALUES (1, $1::jsonb) ON CONFLICT (id) DO NOTHING',
+        [JSON.stringify(defaultState)],
+      );
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   })();
 
   try {
