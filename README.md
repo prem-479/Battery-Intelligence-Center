@@ -14,6 +14,8 @@
 | --- | --- |
 | ![Battery Intelligence Center fleet dashboard](./public/screenshots/dashboard.png) | ![Battery Intelligence Center safety alerts](./public/screenshots/safety-alerts.png) |
 
+The application also includes a thermal-intelligence view with a transparent, rule-based assessment of the selected vehicle's available pack-temperature telemetry.
+
 ## Portfolio summary
 
 Battery Intelligence Center is a portfolio project exploring how EV telemetry can be presented as a useful fleet-operations experience. It brings vehicle health indicators, time-series telemetry, fleet summaries, public charging and weather context, and prioritized safety alerts into one responsive interface.
@@ -21,6 +23,8 @@ Battery Intelligence Center is a portfolio project exploring how EV telemetry ca
 ### Highlights
 
 - Built a responsive, dark-themed dashboard with fleet summaries, vehicle selection, state-of-health indicators, telemetry charts, and safety alerts.
+- Added a thermal-intelligence view with temperature-history summaries, freshness checks, explicit risk thresholds, and clear sample-data provenance.
+- Added a tested thermal rule baseline that flags critical temperatures, warnings, stale telemetry, and non-zero fault codes without claiming predictive AI.
 - Implemented a typed React and TypeScript frontend and an Express REST API, with routes for overview data, vehicles, alerts, telemetry, and public-data lookups.
 - Connected a Vercel serverless API to Neon Postgres for durable demo-state storage; retained a local JSON-file store for local/Docker use.
 - Made database initialization safe under concurrent serverless requests and serialized demo writes with PostgreSQL transactions and advisory locks.
@@ -38,16 +42,18 @@ React · TypeScript · Express · PostgreSQL · Vercel · Neon · Solidity · Et
 - Integrated **3 public data providers** and built a persistent serverless backend with transaction-safe PostgreSQL writes.
 - Verified the production homepage, API health check, and fleet overview endpoint with successful HTTP responses.
 - Implemented demo-mode safeguards that distinguish sample battery telemetry from live external data and on-chain contract data.
+- Added a thermal risk baseline with documented temperature/freshness thresholds and automated unit tests; the interface explicitly distinguishes pack history from unavailable cell-level data.
 
 ### Quantified scope
 
 | Measure | Result |
 | --- | ---: |
-| REST API routes | 10 |
+| REST API routes | 11 |
 | Public data integrations | 3 |
 | Persistence modes | 2 — local JSON and Neon Postgres |
 | Wallet or sign-in required for the demo | 0 |
 | Production smoke checks verified | 3 — homepage, API health, fleet overview |
+| Thermal rule-baseline tests | 5 |
 
 ## Technology
 
@@ -64,6 +70,7 @@ React · TypeScript · Express · PostgreSQL · Vercel · Neon · Solidity · Et
 
 - Vercel serves the Vite-built frontend and routes `/api/*` requests to an Express serverless function on the same origin.
 - Neon Postgres stores the demo fleet state in a JSONB-backed row. Schema creation is initialized under a PostgreSQL advisory lock to prevent concurrent first-request creation races.
+- `GET /api/vehicles/:vehicleId/thermal-assessment` applies the shared deterministic thresholds to the stored latest reading and returns a history summary, the thresholds, and a data-provenance notice. It does not persist a separate thermal model result.
 - Demo writes run transactionally and use an advisory lock to avoid overlapping updates to the shared sample state.
 - Local development and Docker can use `backend/data/store.json`; production requires `DATABASE_URL` and does not silently fall back to Vercel's ephemeral filesystem.
 - The UI reports public-provider failures rather than treating unavailable external data as successful responses.
@@ -76,6 +83,7 @@ React · TypeScript · Express · PostgreSQL · Vercel · Neon · Solidity · Et
 | `GET` | `/api/overview` | Fleet summary, alerts, and latest telemetry |
 | `GET` | `/api/vehicles` | Registered vehicle list |
 | `GET` | `/api/vehicles/:vehicleId/telemetry` | Telemetry history for a vehicle |
+| `GET` | `/api/vehicles/:vehicleId/thermal-assessment` | Rule-based assessment and temperature-history summary |
 | `GET` | `/api/alerts` | Safety alert records |
 | `GET` | `/api/public/weather?latitude=...&longitude=...` | Current weather from Open-Meteo |
 | `GET` | `/api/public/charging-stations?latitude=...&longitude=...&radius=5000` | Nearby mapped charging stations from OpenStreetMap Overpass |
@@ -86,6 +94,9 @@ React · TypeScript · Express · PostgreSQL · Vercel · Neon · Solidity · Et
 ### Data and privacy
 
 - **Battery telemetry is simulated.** Free public APIs cannot provide private BMS readings from a vehicle.
+- The thermal-intelligence view applies transparent rules to available pack-level sample/backend readings: below 15°C or above 40°C is a warning, 45°C and above is critical, non-zero fault codes are critical, and non-critical readings older than 15 minutes are stale. These are project thresholds, not certified vehicle safety limits.
+- Temperature summaries describe change across recorded readings over time. They do not estimate simultaneous cell-to-cell spread. The 10-cell, 21700, 1 mm channel, Reynolds 400–700, and water-based Al₂O₃ configuration is a research concept only; the app has no per-cell sensors, coolant measurements, CFD outputs, or thermal simulation results.
+- No validated thermal dataset, trained predictive model, calibrated uncertainty estimate, or AI-based temperature prediction is included.
 - Weather and charging-station results are fetched from public providers and may be incomplete, rate-limited, or temporarily unavailable.
 - A VIN is sent to NHTSA vPIC only when a visitor explicitly submits it; it is not written to the demo store.
 - Coordinates are sent to the relevant public providers to fulfill requests and are not written to the demo store.
@@ -126,6 +137,7 @@ Open `http://localhost:4000`. Mount persistent storage at `/app/backend/data` if
 ```bash
 npm run build
 npm run lint
+npm run test:thermal
 ```
 
 ## Deployment

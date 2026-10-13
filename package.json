@@ -9,6 +9,7 @@
     "build": "tsc -b && vite build",
     "server": "node backend/server.js",
     "lint": "oxlint",
+    "test:thermal": "node --test tests/thermal-analysis.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

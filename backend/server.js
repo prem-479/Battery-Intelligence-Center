@@ -4,6 +4,7 @@ import { Pool } from '@neondatabase/serverless';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assessThermalRisk, summarizePackTemperatures, THERMAL_THRESHOLDS } from '../src/thermal/thermalAnalysis.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -408,6 +409,37 @@ app.get('/api/vehicles/:vehicleId/telemetry', async (req, res) => {
     res.json(vehicleTelemetry.sort((left, right) => right.timestamp - left.timestamp));
   } catch (error) {
     res.status(500).json({ message: 'Failed to fetch telemetry', error: error.message });
+  }
+});
+
+app.get('/api/vehicles/:vehicleId/thermal-assessment', async (req, res) => {
+  const vehicleId = String(req.params.vehicleId ?? '').trim().toUpperCase();
+  if (!/^[A-Z0-9-]{1,31}$/.test(vehicleId)) {
+    return res.status(400).json({ message: 'Vehicle ID must contain 1-31 letters, numbers, or hyphens.' });
+  }
+
+  try {
+    const state = await ensureStore();
+    if (!state.vehicles.some((vehicle) => vehicle.vehicleId === vehicleId)) {
+      return res.status(404).json({ message: 'Vehicle not found.' });
+    }
+
+    const readings = state.telemetry
+      .filter((entry) => entry.vehicleId === vehicleId)
+      .sort((left, right) => right.timestamp - left.timestamp);
+    const latest = readings[0] ?? null;
+
+    res.json({
+      vehicleId,
+      assessment: assessThermalRisk(latest),
+      summary: summarizePackTemperatures(readings),
+      thresholds: THERMAL_THRESHOLDS,
+      assessedAt: Date.now(),
+      assessmentType: 'deterministic-threshold-rules',
+      dataProvenance: 'Stored application telemetry; sensor and source authenticity are not independently verified.',
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to assess vehicle thermal telemetry', error: error.message });
   }
 });
 

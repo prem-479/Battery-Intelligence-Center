@@ -33,8 +33,9 @@ import {
 } from 'recharts';
 import { BrowserProvider, Contract, ethers } from 'ethers';
 import { evHealthMonitorAbi, evHealthMonitorAddress } from './contracts/evHealthMonitor';
+import ThermalIntelligence from './ThermalIntelligence';
 
-type NavKey = 'Overview' | 'Vehicles' | 'Safety Alerts' | 'Administration';
+type NavKey = 'Overview' | 'Vehicles' | 'Thermal Intelligence' | 'Safety Alerts' | 'Administration';
 
 type TelemetryRecord = {
   vehicleId: string;
@@ -135,6 +136,7 @@ declare global {
 const NAV_ITEMS: { key: NavKey; icon: typeof Activity }[] = [
   { key: 'Overview', icon: Activity },
   { key: 'Vehicles', icon: CarFront },
+  { key: 'Thermal Intelligence', icon: Thermometer },
   { key: 'Safety Alerts', icon: ShieldAlert },
   { key: 'Administration', icon: Cpu },
 ];
@@ -1319,6 +1321,15 @@ function App() {
                 )}
               </section>
             </div>
+          )}
+
+          {activeTab === 'Thermal Intelligence' && (
+            <ThermalIntelligence
+              vehicleId={selectedVehicle}
+              latest={latestTelemetry}
+              history={history}
+              demoMode={demoMode}
+            />
           )}
 
           {activeTab === 'Safety Alerts' && (
