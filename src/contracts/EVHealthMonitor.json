@@ -1,0 +1,15 @@
+{
+  "abi": [
+    "function owner() view returns (address)",
+    "function authorizedOracle() view returns (address)",
+    "function registeredVehicles(bytes32) view returns (bool)",
+    "function registerVehicle(bytes32)",
+    "function setOracle(address)",
+    "function logVehicleHealth(bytes32,uint256,uint256,uint256,uint256)",
+    "function getLatestHealth(bytes32) view returns (uint256,uint256,uint256,uint256,uint256)",
+    "function vehicleHistory(bytes32,uint256) view returns (uint256,uint256,uint256,uint256,uint256)",
+    "event HealthLogged(bytes32 indexed vehicleId, uint256 indexed timestamp, uint256 soH, uint256 temperature, uint256 voltage, uint256 errorCode)",
+    "event AlertTriggered(bytes32 indexed vehicleId, uint256 indexed timestamp, string message, uint256 triggerValue, uint256 severity)"
+  ],
+  "address": "0x0000000000000000000000000000000000000000"
+}
