@@ -1,155 +1,161 @@
 # Battery Intelligence Center
 
-A premium EV battery telemetry dashboard built with React, TypeScript, Tailwind CSS, Recharts, and Ethers.js. It is designed for a smart contract that stores vehicle battery telemetry, monitors safety thresholds, and exposes health records for fleet dashboards.
+**A full-stack EV battery health and fleet-monitoring demo.** The application combines a responsive telemetry dashboard, a REST API, persistent PostgreSQL storage, safety alerts, and public EV-related data sources.
 
-## Features
+- **Live demo:** [battery-intelligence-center.vercel.app](https://battery-intelligence-center.vercel.app/)
+- **API health:** [Production health check](https://battery-intelligence-center.vercel.app/api/health)
+- **Source:** [prem-479/Battery-Intelligence-Center](https://github.com/prem-479/Battery-Intelligence-Center)
 
-- Wallet connection and network detection
-- Vehicle selection and fleet summary cards
-- Battery SoH gauge and telemetry charting
-- Safety alert feed and alert reconstruction from logs
-- Owner and oracle management forms
-- Demo mode for presentations and local development
-- Responsive dark automotive dashboard
+> **Data note:** Battery readings, fleet records, and alerts in the public demo are sample data; they are not live readings from a vehicle battery-management system (BMS). The API is deployed and persists demo data in Neon Postgres. Weather, mapped charging stations, and VIN specifications use public data providers.
 
-## Prerequisites
+## Screenshots
 
-- Node.js 22+
-- npm 9+
-- A compatible EVM wallet such as MetaMask
+| Fleet overview | Safety alert feed |
+| --- | --- |
+| ![Battery Intelligence Center fleet dashboard](./public/screenshots/dashboard.png) | ![Battery Intelligence Center safety alerts](./public/screenshots/safety-alerts.png) |
 
-No wallet is needed for the demo deployment. Use the demo-only environment settings below.
+## Portfolio summary
 
-## Installation
+Battery Intelligence Center is a portfolio project exploring how EV telemetry can be presented as a useful fleet-operations experience. It brings vehicle health indicators, time-series telemetry, fleet summaries, public charging and weather context, and prioritized safety alerts into one responsive interface.
 
-1. Install dependencies:
+### Highlights
 
-   npm install
+- Built a responsive, dark-themed dashboard with fleet summaries, vehicle selection, state-of-health indicators, telemetry charts, and safety alerts.
+- Implemented a typed React and TypeScript frontend and an Express REST API, with routes for overview data, vehicles, alerts, telemetry, and public-data lookups.
+- Connected a Vercel serverless API to Neon Postgres for durable demo-state storage; retained a local JSON-file store for local/Docker use.
+- Made database initialization safe under concurrent serverless requests and serialized demo writes with PostgreSQL transactions and advisory locks.
+- Integrated three public, no-key data sources: Open-Meteo weather, OpenStreetMap charging-station data via Overpass, and NHTSA vPIC VIN decoding.
+- Added demo-only mode so visitors can explore the sample experience without connecting a wallet or signing in.
+- Included an Ethers.js smart-contract integration path and a reference Solidity contract for a future on-chain deployment.
 
-2. Copy the environment example:
+### CV-ready project entry
 
-   cp .env.example .env
+**Battery Intelligence Center — Full-Stack EV Battery Monitoring Demo**
 
-3. For the no-sign-in demo, keep these settings:
+React · TypeScript · Express · PostgreSQL · Vercel · Neon · Solidity · Ethers.js
 
-   VITE_DEMO_MODE=true
-   VITE_DEMO_ONLY=true
-   VITE_API_URL=http://localhost:4000
+- Designed and deployed a full-stack EV fleet dashboard with **10 REST API routes**, covering fleet summaries, vehicles, telemetry, alerts, health checks, and public-data lookups.
+- Integrated **3 public data providers** and built a persistent serverless backend with transaction-safe PostgreSQL writes.
+- Verified the production homepage, API health check, and fleet overview endpoint with successful HTTP responses.
+- Implemented demo-mode safeguards that distinguish sample battery telemetry from live external data and on-chain contract data.
 
-   Demo-only mode hides wallet/live controls and stores demo vehicle and telemetry actions through the backend. This unauthenticated demo backend is not suitable for private or production vehicle data.
+### Quantified scope
 
-## Smart contract requirements
+| Measure | Result |
+| --- | ---: |
+| REST API routes | 10 |
+| Public data integrations | 3 |
+| Persistence modes | 2 — local JSON and Neon Postgres |
+| Wallet or sign-in required for the demo | 0 |
+| Production smoke checks verified | 3 — homepage, API health, fleet overview |
 
-The frontend expects a contract exposing the following interface:
+## Technology
 
-- owner()
-- authorizedOracle()
-- registeredVehicles(bytes32)
-- registerVehicle(bytes32)
-- setOracle(address)
-- logVehicleHealth(bytes32,uint256,uint256,uint256,uint256)
-- getLatestHealth(bytes32)
-- vehicleHistory(bytes32,uint256)
-- HealthLogged event
-- AlertTriggered event
+| Area | Technologies |
+| --- | --- |
+| Frontend | React, TypeScript, Vite, Tailwind CSS, Recharts, Lucide |
+| Backend | Node.js, Express, REST |
+| Persistence | Neon Postgres, `@neondatabase/serverless`, local JSON store |
+| Web3 extension | Solidity, Ethers.js |
+| Deployment | Vercel Hobby, Neon Free |
+| Public data | Open-Meteo, OpenStreetMap Overpass, NHTSA vPIC |
 
-A minimal Solidity reference contract is included in `contracts/EVHealthMonitor.sol`.
+## Architecture and reliability
 
-## Vehicle ID encoding
+- Vercel serves the Vite-built frontend and routes `/api/*` requests to an Express serverless function on the same origin.
+- Neon Postgres stores the demo fleet state in a JSONB-backed row. Schema creation is initialized under a PostgreSQL advisory lock to prevent concurrent first-request creation races.
+- Demo writes run transactionally and use an advisory lock to avoid overlapping updates to the shared sample state.
+- Local development and Docker can use `backend/data/store.json`; production requires `DATABASE_URL` and does not silently fall back to Vercel's ephemeral filesystem.
+- The UI reports public-provider failures rather than treating unavailable external data as successful responses.
 
-Vehicle identifiers are mapped to Solidity bytes32 values with:
+## API
 
-```ts
-ethers.encodeBytes32String(vehicleId)
-```
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/health` | API and persistent-store health |
+| `GET` | `/api/overview` | Fleet summary, alerts, and latest telemetry |
+| `GET` | `/api/vehicles` | Registered vehicle list |
+| `GET` | `/api/vehicles/:vehicleId/telemetry` | Telemetry history for a vehicle |
+| `GET` | `/api/alerts` | Safety alert records |
+| `GET` | `/api/public/weather?latitude=...&longitude=...` | Current weather from Open-Meteo |
+| `GET` | `/api/public/charging-stations?latitude=...&longitude=...&radius=5000` | Nearby mapped charging stations from OpenStreetMap Overpass |
+| `GET` | `/api/public/vehicle-specs/:vin` | VIN decode through NHTSA vPIC |
+| `POST` | `/api/vehicles` | Register a demo vehicle |
+| `POST` | `/api/telemetry` | Submit a demo telemetry reading |
 
-This means a human-readable value such as `VEH-001` is encoded consistently for registration, telemetry writes, and reads. The app documents the exact on-chain value in the vehicle registration panel.
+### Data and privacy
 
-## Historical records strategy
-
-The app avoids scanning the full blockchain on each render. Instead, it reads only a bounded window of recent logs from the `HealthLogged` and `AlertTriggered` events with a `queryFilter` call using a recent `fromBlock` value. This is efficient, bounded, and avoids expensive full-chain scans. The app also caches the selected vehicle data within React state so vehicle changes do not trigger repeated full-history pulls.
-
-## Production use
-
-To use real contract data, deploy the contract and set:
-
-- `VITE_CONTRACT_ADDRESS`
-- `VITE_CHAIN_ID`
-- `VITE_DEMO_MODE=false`
-
-The contract owner must register vehicles and set the oracle. The authorized oracle wallet alone may submit telemetry updates. Manual browser-based telemetry entry is restricted and labeled as a low-trust manual fallback for demos or testing.
+- **Battery telemetry is simulated.** Free public APIs cannot provide private BMS readings from a vehicle.
+- Weather and charging-station results are fetched from public providers and may be incomplete, rate-limited, or temporarily unavailable.
+- A VIN is sent to NHTSA vPIC only when a visitor explicitly submits it; it is not written to the demo store.
+- Coordinates are sent to the relevant public providers to fulfill requests and are not written to the demo store.
+- This unauthenticated demo is for evaluation with sample data only. Do not submit private vehicle, customer, or other sensitive information.
 
 ## Run locally
 
-Frontend only:
+### Requirements
+
+- Node.js 22 or newer
+- npm 9 or newer
+
+Install dependencies and start the frontend:
 
 ```bash
-npm run dev -- --host 0.0.0.0
+npm install
+npm run dev
 ```
 
-Full stack with backend:
+Run the frontend and API together:
 
 ```bash
 npm run dev:full
 ```
 
-The backend runs on `http://localhost:4000` and persists EV telemetry, vehicle summaries, and alerts to `backend/data/store.json`.
+The local API listens on `http://localhost:4000` and persists data in `backend/data/store.json`.
 
-## Backend API
-
-The project includes a lightweight Express backend for a full end-to-end flow:
-
-- `GET /api/health` — backend health check
-- `GET /api/public/weather?latitude=...&longitude=...` — current weather from Open-Meteo (no API key)
-- `GET /api/public/charging-stations?latitude=...&longitude=...&radius=5000` — nearby mapped chargers from OpenStreetMap Overpass (no API key)
-- `GET /api/public/vehicle-specs/:vin` — VIN decode via NHTSA vPIC (no API key)
-- `GET /api/vehicles` — list registered vehicles
-- `GET /api/alerts` — list alert records
-- `GET /api/vehicles/:vehicleId/telemetry` — fetch telemetry for a vehicle
-- `GET /api/overview` — aggregate summary including alerts and latest telemetry
-- `POST /api/vehicles` — register a new vehicle
-- `POST /api/telemetry` — submit a new telemetry record
-
-Weather and charging-station information are live public data; vehicle specifications are returned only when a VIN is explicitly submitted. Battery health/telemetry remains clearly labeled demo data because free public APIs cannot provide private vehicle BMS readings. Public API availability, rate limits, and map coverage are not guaranteed; the UI reports provider errors and identifies the data sources.
-
-### Public data sources and privacy
-
-- Open-Meteo supplies current weather for the default San Francisco sample coordinates and for coordinates the user requests.
-- OpenStreetMap data is queried through Overpass for mapped charging stations and attributed as `© OpenStreetMap contributors, ODbL`. Results may be incomplete or temporarily unavailable due to public-service limits.
-- NHTSA vPIC decodes a VIN only after the user submits it. The VIN/decoded response may be briefly cached in server memory; VINs are not written to the demo JSON store.
-- Coordinates are sent to the backend and the applicable public data providers to fulfill requests; they are not written to the demo JSON store. Browser geolocation is requested only after the user chooses “Use my location”.
-
-Review each provider's current usage terms before using this demo beyond evaluation. Do not submit personal or sensitive vehicle data to this unauthenticated sample service.
-
-## Production build
-
-```bash
-npm run build
-```
-
-## Deploy the no-wallet demo
-
-The included Docker setup builds the frontend and runs it from the same Express service as the API. The public demo therefore uses a single origin, requires no wallet or sign-in, and persists demo writes in a Docker volume.
+### Docker
 
 ```bash
 docker compose up --build
 ```
 
-Open `http://localhost:4000`. To deploy, configure a container host to build this repository's `Dockerfile` and expose its host-provided `PORT`. Mount persistent storage at `/app/backend/data` if demo records should survive container replacement. The backend is intentionally unauthenticated and uses a JSON file store: keep it for public sample data only, not real vehicle or customer information. `docker compose config` validates the local Compose configuration; running the container requires an available Docker daemon.
+Open `http://localhost:4000`. Mount persistent storage at `/app/backend/data` if local demo records should survive container replacement.
 
-## Free-tier Vercel deployment
+### Build and lint
 
-Vercel serves the Vite frontend and runs the Express API as a serverless function. Neon Postgres provides durable demo storage; Vercel function filesystems are temporary and must not be used for persistent records.
+```bash
+npm run build
+npm run lint
+```
 
-1. Import this GitHub repository into a Vercel Hobby project, using the repository root as the project root. The included `vercel.json` configures the Vite build and API function.
-2. Create a Neon project on its free plan and connect it to the Vercel project, or add its pooled connection string as the Vercel environment variable `DATABASE_URL` for Production and Preview. Do not commit or paste the connection string into source files.
-3. Keep `VITE_DEMO_MODE=true` and `VITE_DEMO_ONLY=true`; leave `VITE_API_URL` unset in Vercel so the browser calls the same-origin `/api` routes.
-4. Redeploy after setting environment variables. Confirm `/api/health` reports `ok: true`, then test vehicle registration and telemetry submission.
+## Deployment
 
-The API creates and seeds its Postgres state table on first use and serializes demo writes in a database transaction. Locally, it continues using `backend/data/store.json`; in Vercel, it requires `DATABASE_URL` and will not silently fall back to ephemeral disk. Vercel Hobby and Neon Free have usage quotas and service limits that may change. This unauthenticated demo is for public sample data only, not private or production vehicle data.
+The public app is deployed at [battery-intelligence-center.vercel.app](https://battery-intelligence-center.vercel.app/), with the Express API running as a Vercel serverless function and Neon Postgres backing durable demo storage.
 
-## Notes
+To deploy your own instance:
 
-- This frontend is designed for a real on-chain deployment, but demo mode is enabled by default so the UI is useful without a contract.
-- The app will not claim a transaction succeeded without waiting for the receipt.
-- Missing wallet or missing contract configuration is handled with clear UI errors instead of crashing.
+1. Import this repository into Vercel with the repository root as the project root. `vercel.json` configures the Vite frontend build and API function.
+2. Create or select a Neon database and set its **pooled PostgreSQL connection URL** as `DATABASE_URL` in the Vercel Production environment. Keep the value in the dashboard; never commit it to Git.
+3. Leave `VITE_API_URL` unset so the frontend uses same-origin `/api` routes. The default demo configuration does not require a wallet or login.
+4. Redeploy after configuring environment variables.
+5. Verify `/api/health` returns `"ok": true`, then load `/api/overview`.
+
+Vercel Hobby and Neon Free are subject to provider quotas and terms that can change. Check current limits before relying on the demo for ongoing use.
+
+## Smart-contract extension
+
+The frontend includes an Ethers.js integration path for a contract exposing:
+
+- `owner()`, `authorizedOracle()`, and `registeredVehicles(bytes32)`
+- `registerVehicle(bytes32)`, `setOracle(address)`, and `logVehicleHealth(bytes32,uint256,uint256,uint256,uint256)`
+- `getLatestHealth(bytes32)` and `vehicleHistory(bytes32,uint256)`
+- `HealthLogged` and `AlertTriggered` events
+
+A reference contract is available in [`contracts/EVHealthMonitor.sol`](./contracts/EVHealthMonitor.sol). Configure `VITE_CONTRACT_ADDRESS` and `VITE_CHAIN_ID` for a deployed contract. Vehicle IDs are encoded with `ethers.encodeBytes32String(vehicleId)`. The public demo does not claim that sample data is an on-chain transaction.
+
+## Repository
+
+- [Live application](https://battery-intelligence-center.vercel.app/)
+- [Production API health](https://battery-intelligence-center.vercel.app/api/health)
+- [GitHub source repository](https://github.com/prem-479/Battery-Intelligence-Center)
+- [Latest Vercel production deployment](https://vercel.com/prem-479/battery-intelligence-center/8Fppzt9Myi9HMH1SM6Wsv7GrhfCd)
